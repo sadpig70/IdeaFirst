@@ -76,3 +76,7 @@ _legacy/
 # Local override
 config/zones.local.json
 .env.local
+
+# AI Agent
+/CLAUDE.md
+/AGENTS.md
