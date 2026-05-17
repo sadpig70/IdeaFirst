@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" role="img" aria-label="IdeaFirst — an autonomous idea engine where implementation cost is far less than idea value">
+  <defs>
+    <!-- horizontal rainbow sky: magenta → purple → blue → cyan → green -->
+    <linearGradient id="sky" x1="0" y1="0" x2="1" y2="0.35">
+      <stop offset="0"    stop-color="#3a0b52"/>
+      <stop offset="0.20" stop-color="#6d28d9"/>
+      <stop offset="0.44" stop-color="#1d4ed8"/>
+      <stop offset="0.64" stop-color="#0e7490"/>
+      <stop offset="0.83" stop-color="#15803d"/>
+      <stop offset="1"    stop-color="#0f5132"/>
+    </linearGradient>
+
+    <!-- brighter saturated rainbow for the glowing wave ribbons -->
+    <linearGradient id="waveGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0"    stop-color="#ff5ad8"/>
+      <stop offset="0.26" stop-color="#a855f7"/>
+      <stop offset="0.50" stop-color="#3b82f6"/>
+      <stop offset="0.74" stop-color="#22d3ee"/>
+      <stop offset="1"    stop-color="#4ade80"/>
+      <animateTransform attributeName="gradientTransform" type="translate"
+        values="-0.06 0; 0.06 0; -0.06 0" dur="11s" repeatCount="indefinite"/>
+    </linearGradient>
+
+    <!-- title sheen -->
+    <linearGradient id="ink" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.5" stop-color="#e9d5ff"/>
+      <stop offset="1" stop-color="#ffffff"/>
+      <animateTransform attributeName="gradientTransform" type="translate"
+        values="-1 0; 1 0; -1 0" dur="9s" repeatCount="indefinite"/>
+    </linearGradient>
+
+    <radialGradient id="rightBurst" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0"  stop-color="#86efac" stop-opacity="0.55"/>
+      <stop offset="1"  stop-color="#86efac" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- dark scrim so the headline stays readable over any hue -->
+    <radialGradient id="scrim" cx="0.5" cy="0.42" r="0.62">
+      <stop offset="0"   stop-color="#070912" stop-opacity="0.55"/>
+      <stop offset="0.7" stop-color="#070912" stop-opacity="0.20"/>
+      <stop offset="1"   stop-color="#070912" stop-opacity="0"/>
+    </radialGradient>
+
+    <filter id="glow"><feGaussianBlur stdDeviation="2.4" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="softGlow" x="-20%" y="-60%" width="140%" height="220%">
+      <feGaussianBlur stdDeviation="5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+
+  <!-- background -->
+  <rect width="1200" height="300" fill="url(#sky)"/>
+  <ellipse cx="1080" cy="250" rx="320" ry="190" fill="url(#rightBurst)"/>
+  <rect width="1200" height="300" fill="url(#scrim)"/>
+
+  <!-- flowing rainbow wave ribbons (bottom) -->
+  <g filter="url(#softGlow)">
+    <path fill="url(#waveGrad)" opacity="0.30"
+      d="M-200 246 C 120 210 320 292 600 250 S 1080 206 1400 244 L1400 300 L-200 300 Z">
+      <animateTransform attributeName="transform" type="translate"
+        values="0 0; -34 0; 0 0" dur="13s" repeatCount="indefinite"/>
+    </path>
+    <path fill="url(#waveGrad)" opacity="0.40"
+      d="M-200 262 C 160 232 360 300 620 266 S 1060 232 1400 262 L1400 300 L-200 300 Z">
+      <animateTransform attributeName="transform" type="translate"
+        values="0 0; 30 0; 0 0" dur="10s" repeatCount="indefinite"/>
+    </path>
+    <path fill="url(#waveGrad)" opacity="0.62"
+      d="M-200 276 C 200 252 380 304 640 280 S 1080 256 1400 278 L1400 300 L-200 300 Z">
+      <animateTransform attributeName="transform" type="translate"
+        values="0 0; -22 0; 0 0" dur="8s" repeatCount="indefinite"/>
+    </path>
+    <path fill="none" stroke="url(#waveGrad)" stroke-width="2" opacity="0.9"
+      d="M-200 252 C 140 218 330 296 600 256 S 1070 214 1400 250">
+      <animateTransform attributeName="transform" type="translate"
+        values="0 0; -34 0; 0 0" dur="13s" repeatCount="indefinite"/>
+    </path>
+  </g>
+
+  <!-- foreground -->
+  <text x="600" y="112" text-anchor="middle"
+        font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif"
+        font-size="90" font-weight="800" fill="url(#ink)" filter="url(#glow)">
+    IdeaFirst
+  </text>
+
+  <text x="600" y="154" text-anchor="middle"
+        font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif"
+        font-size="24" fill="#eef2ff">
+    implementation cost &#8810; idea value
+  </text>
+
+  <!-- SDX → TCX → IDX → CIX → EVX → AOX pipeline pulse -->
+  <g font-family="ui-monospace,Menlo,Consolas,monospace" font-size="21" fill="#d7def0">
+    <text x="600" y="206" text-anchor="middle" letter-spacing="6">
+      SDX &#8594; TCX &#8594; IDX &#8594; CIX &#8594; EVX &#8594; AOX
+    </text>
+  </g>
+  <circle r="5" fill="#ffffff" filter="url(#glow)">
+    <animateMotion dur="6s" repeatCount="indefinite" rotate="auto"
+      path="M 250 199 L 950 199"/>
+    <animate attributeName="opacity" values="0;1;1;0" dur="6s" repeatCount="indefinite"/>
+  </circle>
+
+  <text x="600" y="236" text-anchor="middle"
+        font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif"
+        font-size="15" fill="#cdd6ec">
+    a 6-skill cross-model adversarial pipeline that structurally refuses mundane LLM output
+  </text>
+</svg>

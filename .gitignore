@@ -1,0 +1,78 @@
+# Byte-compiled / optimized
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+wheels/
+.installed.cfg
+MANIFEST
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Testing / type-checking caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+.hypothesis/
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Project-specific: NOT part of the public deliverable ---
+# NOTE: AGENTS.md and CLAUDE.md ARE public (the operating contract) — not ignored.
+
+# Engine round-state / pipeline run outputs (private; destined for _legacy/)
+/.sdx/
+/.tcx/
+/.idx/
+/.cix/
+/.evx/
+/.aox/
+/.sa-icx/
+/.sa-evx/
+/.sa-aox/
+/.pgf/
+
+# Process scratch & local-only session handoff (keep local, never publish)
+/web_process/
+/project_status.md
+
+# Finished sub-project: its own repo (sadpig70/BlindSpotMoat) — never duplicate here
+/BlindSpotMoat/
+
+# Private design reference (contains 3rd-party logos) + scratch previews — never publish
+/assets/banner_background_ref.*
+/assets/_*
+
+# Preserved Korean originals / scratch (local only)
+_legacy/
+
+*.log
+
+# Local override
+config/zones.local.json
+.env.local

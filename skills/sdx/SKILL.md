@@ -1,0 +1,673 @@
+---
+name: sdx
+description: "SDX (Source Discovery eXplorer) — 정보 채널 발굴·평가·카탈로그화 메타 스킬. IdeaFirst/IdeaFirst-MC와 같은 합성 엔진의 입력 편향(영미권/최신뉴스 편중)을 깨기 위해 직교 정보 채널 80개를 발굴·유지한다. 5가지 발굴 전략(Reference Backtrack, Cross-Lingual Mirror, Failure Archive, Adjacent Borrow, Weak Signal)과 8축 메트릭 평가, 4-Axis 다양성 매트릭스를 사용. 동질화 감지 시 트리거 기반 자동 갱신. Triggers: SDX, 채널발굴, 정보소스발굴, source discovery, 편향제거, IdeaFirst채널, 직교채널, channel catalog, heterogeneous source"
+user-invocable: true
+argument-hint: "bootstrap|refresh|expand|audit [--cells=cell_id] [--force]"
+version: "1.2"
+author: "양정욱 (sadpig70@gmail.com)"
+---
+
+# SDX (Source Discovery eXplorer) v1.2
+
+> IdeaFirst는 합성 엔진, SDX는 그 위의 입력 채널 발굴 엔진.
+> 합성의 다양성은 입력의 다양성을 초과할 수 없다.
+
+## 존재 이유 (Why)
+
+IdeaFirst 8-AI 실증 결과 24개 시스템 제안이 **3개 클러스터로 붕괴** (PQC×바이오, LEO×전력망, 휴머노이드×규제). 원인은 합성 엔진이 아닌 **입력 채널의 동질성** (모두 영미권 tech 미디어, 최신 24h, 같은 화제). SDX는 이 입력 단계에서 **직교 채널 80개**를 발굴·유지하여 IdeaFirst-MC의 합성 다양성을 구조적으로 보장한다.
+
+## 핵심 파라미터
+
+```yaml
+TARGET_CHANNELS: 80              # 직교 기저만 유지
+VALIDATION_DEPTH: url_alive_only # HTTP 200만 확인 (가벼움)
+TRIGGER_MODE: homogenization_detected  # 동질화 감지 시 자동 발동
+EXPLORATION_STRATEGIES: 5
+EVALUATION_AXES: 8
+DIVERSITY_MATRIX: 4-Axis
+```
+
+## DESIGN_DECISIONS (사용자 명시 결정 기록)
+
+> 이 섹션은 v1.1에서 추가됨. 외부 리뷰가 컨텍스트 누락으로 잘못된 비판을 하지 않도록 결정 근거를 명시.
+
+```yaml
+validation_depth:
+  selected: "url_alive_only"
+  alternatives_considered:
+    - "(a) URL alive only — SELECTED"
+    - "(b) Sample content extraction + signal density 측정"
+    - "(c) Insight generation test (실제 인사이트 1개 도출 검증)"
+  rationale: |
+    정밀(80개) + 트리거 기반 갱신과 결합 시 무거운 검증은 비용 대비 효익 낮음.
+    카탈로그 사용 단계(IdeaFirst-MC)에서 채널 품질이 자연 측정되므로 사후 갱신 가능.
+  user_decision_date: "2026-05-11"
+
+catalog_size:
+  selected: 80
+  alternatives: ["(b) 300 mid", "(c) 1000+ large"]
+  rationale: "직교 기저만 유지, 정밀도 우선"
+
+update_trigger:
+  selected: "homogenization_detected"
+  alternatives: ["(a) quarterly", "(b) semi-annual"]
+  rationale: "출력 동질화가 곧 입력 갱신 필요 신호"
+```
+
+## ACCESS_POLICY
+
+채널 카탈로그에서 유료·제한 소스 처리 정책:
+
+```yaml
+access_tiers:
+  tier_1_free:
+    desc: "완전 무료, API 제한 적음"
+    priority: "highest"
+    examples: ["arXiv", "IETF datatracker", "Wikipedia"]
+
+  tier_2_signup:
+    desc: "무료 가입 필요"
+    priority: "high"
+    examples: ["HuggingFace", "Crunchbase free tier"]
+
+  tier_3_paid:
+    desc: "유료 구독"
+    priority: "medium"
+    handling: "URL alive check + 가입 안내만, 콘텐츠 직접 수집 X"
+    examples: ["WSJ", "FT", "Crunchbase Pro"]
+
+  tier_4_institutional:
+    desc: "기관 계약 필요 (학술)"
+    priority: "low (but high signal)"
+    handling: "메타데이터만 수집 (제목·초록), 본문은 사용자가 기관 접근으로 처리"
+    examples: ["CNKI", "Web of Science", "Scopus"]
+
+catalog_balance_rule:
+  tier_1_2_minimum: "≥ 50% of catalog (무료 접근 보장)"
+  tier_3_4_maximum: "≤ 50% (고가치 신호이나 운영 부담)"
+```
+
+## SDX_POLICY (v1.2 신규 — 운영 임계값 단일 출처)
+
+> 모든 동작 임계값을 한 곳에 모아 운영자가 코드 수정 없이 조정 가능하게 한다. PPR은 이 값들을 참조한다.
+
+```yaml
+homogenization_thresholds:
+  keyword_coverage_max: 0.80        # M1: top-10 키워드가 출력의 80% 이상 점유 시 트리거
+  domain_pair_repeat_max: 3         # M2: 같은 도메인 쌍이 5라운드 중 3회 이상 반복 시 트리거
+  embedding_similarity_max: 0.65    # M3: 평균 임베딩 cosine 유사도 0.65 이상 시 트리거
+  trigger_metric_count_min: 2       # 3개 메트릭 중 2개 이상 임계 초과 시 발동
+  recent_rounds_window: 5           # 평가 윈도우 (라운드 수)
+
+selection:
+  max_overlap_cut: 0.5              # 그리디 직교 선택 시 기존 선택과 overlap 컷오프
+  cell_coverage_floor: 0.6          # 4-Axis 셀 60% 미만 시 빈 셀 강제 보충
+  diversity_improvement_target: 0.15 # refresh 모드 종료 조건 (개선폭 ≥ 15%)
+  refresh_max_iterations: 3         # refresh Convergence Loop 최대 반복
+
+bootstrap:
+  candidate_target: 200             # 후보 풀 목표 크기
+  validated_target: 120             # URL alive 통과 후 기대 크기
+  basis_target: 80                  # 최종 직교 기저
+
+http:
+  url_check_timeout_sec: 10
+  acceptable_status: [200, 301, 302]
+
+audit:
+  redundancy_similarity_threshold: 0.7  # ModeAudit에서 중복 채널로 간주
+```
+
+## 4-Axis Diversity Matrix (요약 — 정본: `schemas/channel_entry.yaml#axis_system`)
+
+모든 채널은 `(Temporal, Geographic, Format, Scale)` 4-tuple 셀 좌표를 가진다. 카탈로그는 가능한 한 셀을 고르게 커버한다.
+
+| Axis | Cells | 정본 |
+|---|---|---|
+| **Temporal** | T-0, T-1Y, T-5Y, T-50Y, T-100Y+ | `schemas/channel_entry.yaml` |
+| **Geographic** | US_EU, CN, RU_EE, IN_SEA, JP_KR, LATAM, AF, MENA | 동일 |
+| **Format** | news, paper, patent, oss, std, vc, gov, conf, niche, nature | 동일 |
+| **Scale** | macro, meso, micro | 동일 |
+
+가능 셀 총수: 5 × 8 × 10 × 3 = 1,200. 카탈로그 80개로 최소 6.7% 커버.
+
+## 5가지 발굴 전략
+
+| ID | 이름 | 핵심 메커니즘 | 정본 프롬프트 |
+|----|------|--------------|-------------|
+| S1 | **Reference Backtrack** | 좋은 논문/기사의 출처 → 그 출처의 출처 → 도달지가 후보 | `strategies/01_reference_backtrack.md` |
+| S2 | **Cross-Lingual Mirror** | 동일 주제를 7개 비영어권 언어로 검색 → 1차 자료 발굴 | `strategies/02_cross_lingual_mirror.md` |
+| S3 | **Failure & Death Archive** | "killed by", "deprecated", "abandoned", "withdrawn" | `strategies/03_failure_archive.md` |
+| S4 | **Adjacent Domain Borrow** | "X 분야 사람들은 어디서 정보 얻나?" 인접 분야의 정보 인프라 차용 | `strategies/04_adjacent_borrow.md` |
+| S5 | **Weak Signal Hunt** | niche newsletter, mailing list, long-open issues, 비공개 그룹 | `strategies/05_weak_signal_hunt.md` |
+
+> v1.2: 각 전략의 자연어 프롬프트가 **정본(canonical)**. SKILL.md PPR 함수는 thin wrapper로 그것을 참조한다.
+
+## 8축 평가 메트릭 (요약 — 정본: `schemas/channel_entry.yaml#metric_guide`)
+
+| Axis | 의미 | 가중치 |
+|---|---|---|
+| `independence` | 기존 카탈로그 채널과의 직교성 | **2.0** (핵심) |
+| `signal_density` | 잡음 대비 정보율 | 1.0 |
+| `persistence` | 지속 갱신 vs 일회성 | 1.0 |
+| `accessibility` | 공개API/무료/유료/기관계약 | 1.0 |
+| `geo_diversity` | 영미권 외 정도 | 1.0 |
+| `temporal_depth` | 과거 도달 깊이 | 1.0 |
+| `format_unique` | 다른 채널과 포맷 차이 | 1.0 |
+| `trust_level` | 1차 자료성 | 1.0 |
+
+각 0-10 점수. 측정 기준 상세는 `schemas/channel_entry.yaml#metric_guide` 참조.
+
+```
+total_score = (independence × 2.0 + Σ(other_7_axes)) / 9.0
+분모 9.0 = 1×2.0 + 7×1.0 / 최댓값 10.0 / 최솟값 0.0
+```
+
+## 운영 모드 (4개)
+
+| Mode | Trigger | Action |
+|------|---------|--------|
+| `bootstrap` | 카탈로그 부재 시 최초 1회 | 5전략 병렬 → 200 후보 → 80 직교 기저 선정 |
+| `refresh` | 동질화 감지 자동 발동 | 약한 채널 N개 교체, 카탈로그 부분 갱신 |
+| `expand` | 사용자가 특정 셀 지정 | 4-Axis 매트릭스의 빈 셀 집중 발굴 |
+| `audit` | 분기/임의 시점 | 80×80 직교성 재계산, 중복 채널 제거 |
+
+---
+
+## DESIGN: Gantree
+
+> 모든 흐름 제어(if/while/for/Convergence Loop)는 **PPR `def` 블록**에 위치. Gantree는 노드 구조만 표현.
+
+```
+SDX_Main // SDX 메인 진입점 (in-progress) @v:1.2
+    ModeBootstrap // 최초 카탈로그 80개 구축 (designing)
+        Phase1_SeedAudit // 기존 알려진 채널 등재 (designing)
+            AI_load_known_channels // 영미권 주요 소스 ~80개 베이스
+            AI_identify_blind_spots // 명시적 결손 영역 식별
+            # output: seed_channels.yaml
+
+        Phase2_Exploration // 5전략 병렬 발굴 (designing) @dep:Phase1_SeedAudit
+            [parallel]
+            AI_explore_reference_backtrack
+            AI_explore_cross_lingual
+            AI_explore_failure_archive
+            AI_explore_adjacent_borrow
+            AI_explore_weak_signal
+            [/parallel]
+            AI_merge_candidates // 중복 제거
+            # output: all_candidates.yaml  (~200개)
+
+        Phase3_LightValidation // URL 살아있음만 확인 (designing) @dep:Phase2_Exploration
+            AI_check_url_alive // HTTP 200/301/302만 통과
+            AI_filter_dead
+            # output: validated.yaml  (~120개)
+
+        Phase4_OrthogonalityCompute // 직교성 계산 (designing) @dep:Phase3_LightValidation
+            AI_score_8axis_metrics // 각 채널 8축 점수
+            AI_compute_pairwise_overlap // 채널쌍 신호 중복도
+            AI_select_orthogonal_basis_80 // 그리디 직교 선택
+            # output: catalog_v1_basis.yaml  (80개)
+
+        Phase5_CatalogEmit // 최종 출력 — sharded catalog (designing) @dep:Phase4_OrthogonalityCompute
+            AI_format_yaml_entries           // schemas/channel_entry.yaml 준수
+            AI_shard_by_format               // 채널을 format별 yaml로 분할
+            AI_emit_index                    // index.yaml: shard_key=format, counts, refs
+            AI_emit_4axis_coverage_report    // 셀 커버리지 시각화
+            AI_emit_orthogonality_matrix     // 80×80 (or N×N) pairwise overlap
+            AI_emit_selection_log            // 채택/거절 로그
+            # output_root: .sdx/catalog/
+            # output: index.yaml                                    (entry point)
+            # output: channels/{format}.yaml × 10                   (sharded by format)
+            # output: basis/orthogonality_matrix_v{N}.json
+            # output: basis/overlap_policy.yaml
+            # output: basis/selection_log_v{N}.yaml
+            # output: basis/rejected_candidates.yaml                (consolidated all versions)
+            # output: reports/coverage_v{N}.md
+            # output: reports/expand_v{N}.md                        (per expand cycle)
+
+    ModeRefresh // 동질화 감지 시 부분 갱신 (designing)
+        # entry: AI_detect_homogenization triggered
+        # process: AI_identify_weak_channels → AI_explore_5_strategies_focused
+        #          → AI_validate_url_alive → AI_swap_into_catalog
+        # convergence: diversity_improvement >= SDX_POLICY.selection.diversity_improvement_target
+        # output_root: .sdx/catalog/                                (mutate shards in place)
+        # output: channels/{format}.yaml                            (affected shards)
+        # output: index.yaml                                        (version bump + counts)
+        # output: reports/refresh_v{N}.md                           (per-refresh log)
+        # output: reports/homogenization_log.md                     (trigger event record)
+
+    ModeExpand // 특정 셀 강화 (designing)
+        # input: target_cells (--cells 인자)
+        # process: AI_explore_targeted_cells → AI_validate_url_alive → AI_inject_into_catalog
+        # note: 카탈로그 크기 80 초과 허용 (사용자 명시 강화)
+        # output_root: .sdx/catalog/                                (additive — preserve existing)
+        # output: channels/{format}.yaml                            (target shards updated)
+        # output: index.yaml                                        (version bump + counts)
+        # output: basis/rejected_candidates.yaml                    (append new v{N} section)
+        # output: reports/expand_v{N}.md                            (this expand cycle log)
+
+    ModeAudit // 직교성 재평가 (designing)
+        # process: AI_recompute_orthogonality_matrix → AI_identify_redundant_pairs
+        #          → AI_propose_replacements → AI_request_user_approval
+        # note: 자동 적용 금지 (사용자 승인 필수)
+        # output_root: .sdx/catalog/
+        # output: basis/orthogonality_matrix_v{N}.json              (full N×N)
+        # output: basis/compute_NxN.py                              (reproducible script)
+        # output: reports/audit_v{N}.md                             (violations + recommendations)
+        # output: basis/selection_log_v{N}.yaml                     (only if policy changes)
+```
+
+---
+
+## PPR: 핵심 함수 정의
+
+### 발굴 전략 (5개) — strategies/*.md가 정본 프롬프트
+
+각 함수는 thin wrapper. 실제 발굴 동작은 `strategies/0X_*.md`의 자연어 프롬프트를 따른다.
+
+```python
+def AI_explore_reference_backtrack(seed_papers: list[Paper]) -> list[ChannelCandidate]:
+    """역추적 발굴 — seed_papers의 reference를 depth 3까지 추적.
+    prompt: strategies/01_reference_backtrack.md
+    """
+    # acceptance_criteria:
+    #   - len(result) >= 30
+    #   - ratio_non_us_eu(result) >= 0.30
+    #   - 모든 후보에 trace_path 부착 (seed → depth_1 → depth_2 → depth_3)
+    candidates = []
+    for paper in seed_papers:
+        refs = AI_extract_references(paper, depth=3)
+        for ref in refs:
+            channel = AI_identify_publishing_venue(ref)
+            if channel not in candidates:
+                candidates.append(channel)
+    return candidates
+
+
+def AI_explore_cross_lingual(
+    topic: str,
+    target_langs: list[str] = ["zh-CN", "ja", "ru", "hi", "es", "pt-BR", "ar"],
+) -> list[ChannelCandidate]:
+    """언어 횡단 발굴 — 동일 주제를 7개 비영어권 언어로 native search.
+    prompt: strategies/02_cross_lingual_mirror.md
+    """
+    # acceptance_criteria:
+    #   - 7개 언어 모두 커버 (각 ≥ 5개)
+    #   - len(result) >= 35
+    #   - 영문 mirror 존재 채널은 우선순위 낮춤
+    candidates = []
+    for lang in target_langs:
+        translated = AI_translate_topic(topic, lang)
+        results = AI_search_native_lang(translated, lang)
+        candidates += AI_extract_channels(results)
+    return candidates
+
+
+def AI_explore_failure_archive(domain: str) -> list[ChannelCandidate]:
+    """실패·사장 아카이브 발굴.
+    prompt: strategies/03_failure_archive.md
+    """
+    # acceptance_criteria:
+    #   - len(result) >= 20
+    #   - 각 후보에 death_metadata 부착 (year, cause, unanswered_question)
+    #   - 분석적 아카이브 우선 (단순 obituary 제외)
+    queries = [
+        f"abandoned {domain} technology archive",
+        f"deprecated {domain} standard",
+        f"failed {domain} startup graveyard",
+        f"killed by {domain}",
+        f"withdrawn {domain} patent",
+    ]
+    candidates = AI_search_multi(queries)
+    return AI_extract_channels(candidates)
+
+
+def AI_explore_adjacent_borrow(target_domain: str) -> list[ChannelCandidate]:
+    """인접 분야 정보 인프라 차용.
+    prompt: strategies/04_adjacent_borrow.md
+    """
+    # acceptance_criteria:
+    #   - 5개 인접 분야 모두 분야간 거리가 멀 것 (예: 모두 IT 아님)
+    #   - 분야당 ≥ 4개 채널 (총 ≥ 20)
+    #   - 각 채널에 transfer_difficulty 점수 부착
+    adjacent_domains = AI_identify_adjacent_domains(target_domain, min_count=5)
+    candidates = []
+    for adj in adjacent_domains:
+        infra = AI_query_info_infrastructure(adj)
+        candidates += infra
+    return candidates
+
+
+def AI_explore_weak_signal() -> list[ChannelCandidate]:
+    """약신호 사냥 — niche newsletter, long-open issues, 비공개 그룹.
+    prompt: strategies/05_weak_signal_hunt.md
+    """
+    # acceptance_criteria:
+    #   - len(result) >= 25
+    #   - 각 후보에 활성도 점수 + 검색 가시성 점수 부착
+    #   - "구글 검색 1페이지에 안 나오는" 것 우선
+    sources = [
+        "substack:top_niche",
+        "github:issues_open>1y",
+        "stackoverflow:unanswered>100votes",
+        "discord:public_servers",
+        "mailing_list:active",
+    ]
+    return AI_crawl_weak_signal_sources(sources)
+```
+
+### 검증 및 평가
+
+```python
+def AI_check_url_alive(channel: ChannelCandidate) -> bool:
+    """경량 검증 — HTTP HEAD/GET → SDX_POLICY.http.acceptable_status만 통과."""
+    # acceptance_criteria:
+    #   - 내용 분석 수행 금지 (사용자 결정)
+    #   - timeout = SDX_POLICY.http.url_check_timeout_sec
+    try:
+        response = http_head(channel.url, timeout=SDX_POLICY["http"]["url_check_timeout_sec"])
+        return response.status in SDX_POLICY["http"]["acceptable_status"]
+    except:
+        return False
+
+
+def AI_score_8axis_metrics(
+    channel: ChannelCandidate,
+    existing_catalog: list[ChannelEntry],
+) -> ChannelMetrics:
+    """8축 0-10 점수 산정. independence는 기존 카탈로그와의 비교 필요."""
+    # acceptance_criteria:
+    #   - 8개 축 모두 0-10 정수 또는 실수
+    #   - independence는 max(overlap with existing) → 10 - (10 × max_ov)
+    return {
+        "independence":   AI_compute_independence(channel, existing_catalog),
+        "signal_density": AI_estimate_signal_density(channel),
+        "persistence":    AI_check_update_frequency(channel),
+        "accessibility":  AI_check_api_or_free(channel),
+        "geo_diversity":  AI_score_non_us_eu(channel),
+        "temporal_depth": AI_check_archive_depth(channel),
+        "format_unique":  AI_score_format_uniqueness(channel),
+        "trust_level":    AI_estimate_trust(channel),
+    }
+
+
+def AI_compute_pairwise_overlap(ch_a: ChannelEntry, ch_b: ChannelEntry) -> float:
+    """두 채널 간 신호 중복도 (0-1)."""
+    # acceptance_criteria:
+    #   - 0.0 <= result <= 1.0
+    #   - 같은 4-Axis 셀이면 +0.4, 같은 도메인 +0.3,
+    #     같은 publisher_group +0.2, 같은 언어 +0.1
+    #   - overlap >= SDX_POLICY.audit.redundancy_similarity_threshold → 중복으로 간주
+    score = 0.0
+    if ch_a.axis_cell == ch_b.axis_cell:
+        score += 0.4
+    if ch_a.primary_domain == ch_b.primary_domain:
+        score += 0.3
+    if ch_a.publisher_group == ch_b.publisher_group:
+        score += 0.2
+    if ch_a.language == ch_b.language:
+        score += 0.1
+    return min(score, 1.0)
+
+
+def AI_select_orthogonal_basis_80(
+    candidates: list[ChannelCandidate],
+) -> list[ChannelEntry]:
+    """그리디 직교 선택 — total_score 내림차순으로 SDX_POLICY 임계 만족 후보만 채택."""
+    # acceptance_criteria:
+    #   - len(result) == SDX_POLICY.bootstrap.basis_target  (80)
+    #   - 모든 쌍의 overlap < SDX_POLICY.selection.max_overlap_cut  (0.5)
+    #   - 4-Axis 셀 커버리지 >= SDX_POLICY.selection.cell_coverage_floor  (0.6)
+    selected = []
+    sorted_cands = sorted(candidates, key=lambda c: c.total_score, reverse=True)
+    target = SDX_POLICY["bootstrap"]["basis_target"]
+    cut = SDX_POLICY["selection"]["max_overlap_cut"]
+    for cand in sorted_cands:
+        if len(selected) >= target:
+            break
+        max_ov = max(
+            (AI_compute_pairwise_overlap(cand, s) for s in selected),
+            default=0,
+        )
+        if max_ov < cut:
+            selected.append(cand)
+    if AI_cell_coverage(selected) < SDX_POLICY["selection"]["cell_coverage_floor"]:
+        selected = AI_force_fill_empty_cells(selected, candidates)
+    return selected
+```
+
+### 동질화 트리거
+
+```python
+def AI_detect_homogenization(recent_outputs: list[IdeaFirstOutput]) -> TriggerDecision:
+    """IdeaFirst-MC 최근 N라운드 출력의 동질화 측정.
+    SDX_POLICY.homogenization_thresholds.trigger_metric_count_min 이상 메트릭이
+    임계를 초과하면 트리거 발동.
+    """
+    # acceptance_criteria:
+    #   - 3개 메트릭(M1/M2/M3) 모두 산정
+    #   - triggered: bool
+    #   - metrics dict + recommendation 포함
+    P = SDX_POLICY["homogenization_thresholds"]
+    recent_outputs = recent_outputs[-P["recent_rounds_window"]:]
+
+    # M1: 키워드 집중도
+    top_keywords = AI_extract_top_keywords(recent_outputs, k=10)
+    coverage = AI_compute_keyword_coverage(top_keywords, recent_outputs)
+    m1 = coverage >= P["keyword_coverage_max"]
+
+    # M2: 도메인 페어 반복
+    pairs = AI_extract_domain_pairs(recent_outputs)
+    max_pair_count = max(Counter(pairs).values())
+    m2 = max_pair_count >= P["domain_pair_repeat_max"]
+
+    # M3: 임베딩 유사도
+    embeddings = [AI_embed(o.title + o.problem_statement) for o in recent_outputs]
+    avg_sim = AI_avg_pairwise_cosine(embeddings)
+    m3 = avg_sim >= P["embedding_similarity_max"]
+
+    triggered_count = sum([m1, m2, m3])
+    return {
+        "triggered": triggered_count >= P["trigger_metric_count_min"],
+        "metrics": {
+            "keyword_coverage": coverage,
+            "max_pair_count": max_pair_count,
+            "avg_embedding_sim": avg_sim,
+        },
+        "recommendation": "refresh" if triggered_count >= P["trigger_metric_count_min"] else "no_action",
+    }
+```
+
+### 모드 실행 함수 (v1.2 신규 — H2)
+
+```python
+def mode_bootstrap() -> Catalog:
+    """ModeBootstrap의 5-Phase 순차 실행."""
+    # acceptance_criteria:
+    #   - len(catalog) == SDX_POLICY.bootstrap.basis_target
+    #   - 4-Axis required_coverage 충족 (schemas/channel_entry.yaml#required_coverage)
+    seeds      = phase1_seed_audit()
+    candidates = phase2_exploration(seeds)              # [parallel] 5 strategies
+    validated  = phase3_light_validation(candidates)
+    basis      = phase4_orthogonality_compute(validated)
+    return phase5_catalog_emit(basis)
+
+
+def mode_refresh(catalog: Catalog, recent_outputs: list[IdeaFirstOutput]) -> Catalog:
+    """동질화 감지 시 약한 채널 N개 교체. Convergence Loop."""
+    # acceptance_criteria:
+    #   - len(new_catalog) == len(catalog)  (크기 보존)
+    #   - diversity_improvement >= SDX_POLICY.selection.diversity_improvement_target
+    #     OR iterations == SDX_POLICY.selection.refresh_max_iterations
+    decision = AI_detect_homogenization(recent_outputs)
+    if not decision["triggered"]:
+        return catalog
+
+    weak = AI_identify_weak_channels(catalog, n=10)
+    target_cells = AI_extract_cells(weak)
+
+    for _ in range(SDX_POLICY["selection"]["refresh_max_iterations"]):
+        candidates = AI_explore_5_strategies_focused(target_cells)
+        validated = [c for c in candidates if AI_check_url_alive(c)]
+        new_catalog = AI_swap_into_catalog(catalog, weak, validated)
+        improvement = AI_evaluate_diversity_improvement(catalog, new_catalog)
+        if improvement >= SDX_POLICY["selection"]["diversity_improvement_target"]:
+            return new_catalog
+        catalog = new_catalog
+    return catalog
+
+
+def mode_expand(catalog: Catalog, target_cells: list[AxisCell]) -> Catalog:
+    """사용자가 지정한 4-Axis 셀에 5전략을 집중 적용. 카탈로그 크기 80 초과 허용."""
+    # acceptance_criteria:
+    #   - target_cells 모두에서 ≥ 1개 신규 채널 발굴
+    #   - 기존 카탈로그 채널 보존 (제거 금지)
+    candidates = AI_explore_targeted_cells(target_cells)
+    validated = [c for c in candidates if AI_check_url_alive(c)]
+    return AI_inject_into_catalog(catalog, validated)
+
+
+def mode_audit(catalog: Catalog) -> AuditReport:
+    """80x80 직교성 행렬 재계산 + 중복 후보 보고. 자동 적용 금지."""
+    # acceptance_criteria:
+    #   - matrix 크기 == len(catalog) × len(catalog)
+    #   - 자동 카탈로그 수정 금지 — AI_request_user_approval 필수
+    matrix = AI_recompute_orthogonality_matrix(catalog)
+    threshold = SDX_POLICY["audit"]["redundancy_similarity_threshold"]
+    redundant_pairs = AI_identify_redundant_pairs(matrix, threshold=threshold)
+    replacements = AI_propose_replacements(redundant_pairs)
+    return {
+        "matrix": matrix,
+        "redundant_pairs": redundant_pairs,
+        "proposed_replacements": replacements,
+        # 사용자 승인 후에만 catalog 갱신
+    }
+```
+
+---
+
+## 출력 스키마
+
+### channel_catalog_v{N}.yaml (메인 산출물)
+
+엔트리 스키마 정본: `schemas/channel_entry.yaml`. 핵심 필드:
+
+```yaml
+catalog:
+  version: "v1.0"
+  built_at: "2026-MM-DD"
+  total_channels: 80
+  axis_coverage:
+    temporal_cells_filled: 5/5
+    geographic_cells_filled: 7/8
+    format_cells_filled: 9/10
+    scale_cells_filled: 3/3
+  channels:
+    - id: "CH-0001"
+      name: "..."
+      url_pattern: "..."
+      axis: {temporal, geographic, format, scale}
+      metrics: {independence, signal_density, ...}  # 8 axes
+      total_score: 7.5
+      discovery_strategy: "S1_reference_backtrack"
+      ...
+```
+
+### orthogonality_matrix.json
+
+```json
+{
+  "size": 80,
+  "channels": ["CH-0001", "CH-0002", "..."],
+  "matrix": [[0.0, 0.2, "..."], "..."],
+  "max_off_diagonal": 0.48,
+  "avg_off_diagonal": 0.21
+}
+```
+
+### homogenization_log.md
+
+```markdown
+## 2026-05-11 동질화 감지 로그
+
+- IdeaFirst-MC 최근 5라운드 분석
+- M1 키워드 집중도: 0.84 (TRIGGER) ✗
+- M2 도메인 페어 반복: 4회 (TRIGGER) ✗
+- M3 평균 임베딩 유사도: 0.61 (PASS) ✓
+- 결정: refresh 모드 발동
+- 교체 채널: CH-0023, CH-0045, CH-0067 → 신규 3개 등재
+```
+
+---
+
+## 사용법
+
+```bash
+# 최초 카탈로그 구축 (1회)
+/sdx bootstrap
+
+# 동질화 감지 시 자동 갱신 (IdeaFirst-MC가 호출)
+/sdx refresh
+
+# 특정 4-Axis 셀 강화
+/sdx expand --cells="T-100Y+,AF,nature"
+
+# 직교성 재평가 (분기 권장)
+/sdx audit
+```
+
+## IdeaFirst-MC와의 통합
+
+```
+[IdeaFirst-MC 실행]
+    ↓
+[STEP 0] channel_catalog_v1.yaml 로드
+    ↓
+[STEP 0.5] 4-Axis Matrix에서 셀 16개 무작위 샘플링
+    ↓
+[STEP 1-7] IdeaFirst 원형 진행 (각 셀의 채널을 8 AI에 분배)
+    ↓
+[POST] AI_detect_homogenization 자동 실행
+    ↓
+[IF triggered] /sdx refresh 자동 호출
+```
+
+---
+
+## 신규성 검증
+
+기존 정보 수집 도구는 RSS aggregator, 검색 alerter, 트렌드 모니터에 머문다. SDX는 **카탈로그 자체를 직교 기저로 설계하고, 출력 동질화를 트리거로 입력 채널을 자동 진화시키는** 메타 레이어다. 이는 단일 발굴 도구가 아닌, IdeaFirst 같은 합성 엔진의 **편향 면역 시스템**으로 기능한다.
+
+## 향후 확장
+
+- **자기 적용**: SDX 발굴 전략 자체를 5전략으로 발굴 (재귀)
+- **다중 카탈로그**: 도메인별 특화 카탈로그 (의료-80, 우주-80 등)
+- **IdeaFirst 출력 학습**: 실제로 좋은 인사이트를 낳은 채널에 가중치
+- **공유 카탈로그**: AR Gducation 차원의 공용 채널 DB
+
+## 버전 변경 이력
+
+- **v1.2** (2026-05-12): PGF 정합성 개선
+  - Gantree status code 한국어 → PG 6개 영문 코드로 정규화 (`(designing)`, `(in-progress)`)
+  - Gantree 안의 흐름 제어(if/while/Convergence Loop) → 별도 PPR `def` 블록으로 분리
+  - `SDX_POLICY` 블록 신설 — 운영 임계값 8개를 단일 출처로 통합
+  - `ModeRefresh`/`ModeExpand`/`ModeAudit`에 `mode_*()` PPR `def` 추가 (H2)
+  - 4-Axis Matrix + 8축 메트릭의 진실 이중화 해소 — `schemas/channel_entry.yaml`을 정본으로 격상, SKILL.md는 요약+참조
+  - 5전략 PPR을 thin wrapper로 단순화 — `strategies/0X_*.md`의 자연어 프롬프트가 정본
+  - `acceptance_criteria` 형식을 PG 표준(`# acceptance_criteria:` 블록)으로 통일
+  - 출력 파일 표기 `→ filename` → `# output: filename` (PG `→`는 데이터 파이프라인 전용)
+  - 루트 노드에 `@v:1.2` 버전 태그 추가
+
+- **v1.1** (2026-05-11): 외부 리뷰 반영
+  - 점수 공식 명세 정확화 (분모 9.0 명시)
+  - DESIGN_DECISIONS 섹션 추가 (결정 컨텍스트 기록)
+  - ACCESS_POLICY 신규 (유료/기관 소스 처리)
+  - strategies/ 5파일 분리
+
+- **v1.0** (2026-05-11): 최초 릴리스
+
+## 의존 스킬
+
+- `pg` — PPR/Gantree notation (정본)
+- `pgf` — design/plan/execute framework
+- 통합 대상: `ideafirst-mc` (개발 예정)
