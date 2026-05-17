@@ -103,7 +103,6 @@ repository is the advanced engine and is independent of it.
 skills/      the framework (canonical spec; Korean is authoritative — see note)
 docs/        English explanatory docs (architecture, onboarding, standalone)
 assets/      banner
-AGENTS.md    operating contract for the AI orchestrator
 ```
 
 > **On language.** The executable framework under `skills/` is the *canonical

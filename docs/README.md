@@ -10,5 +10,4 @@ PG/PPR notation); these documents are a faithful explanation, not a replacement.
 | [AI_Onboarding_Guide.md](AI_Onboarding_Guide.md) | First-five-minutes onboarding for an AI worker: reading order, roles (persona / auditor / orchestrator), environment-capability rules, the real KPIs. |
 | [SA_IdeaFirst_Standalone_Technical_Document.md](SA_IdeaFirst_Standalone_Technical_Document.md) | The standalone (single-model) execution contract: SA-ICX / SA-EVX / SA-AOX, and the production-vs-standalone boundary. |
 
-See also the project [README](../README.md) and the operating contract
-[`AGENTS.md`](../AGENTS.md).
+See also the project [README](../README.md).

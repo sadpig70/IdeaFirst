@@ -23,7 +23,8 @@ byproducts, never KPIs.
 ## 2. Read in this order
 
 1. This guide (the page you are on).
-2. `AGENTS.md` — the operating contract for the orchestrator role.
+2. The orchestrator operating contract supplied in your runtime (your role,
+   sub-skill call order, state/failure handling, KPI collection duties).
 3. `docs/IdeaFirst_Engine_Technical_Document.md` §0 (executive summary), §1
    (problem + 6 causes + principles), §2 (pipeline + skills).
 4. `docs/IdeaFirst_Engine_Technical_Document.md` §10 — the 5 innovation KPIs.
