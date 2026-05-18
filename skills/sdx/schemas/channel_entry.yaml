@@ -22,6 +22,12 @@ schema_definition:
     - notes           # 자유 메모
     - unique_yield_example  # 이 채널에서만 나온 인사이트 예
     - dependency      # 다른 채널이 이 채널을 인용하는가
+    # ---- v1.3: 노화·드리프트 추적 (decay_guide 참조) ----
+    - first_seen_round     # 카탈로그 최초 등재 라운드 (freshness anchor 폴백)
+    - last_yield_round     # 이 채널이 채택 인사이트에 기여한 마지막 라운드
+    - yield_count          # 누적 realized-yield 횟수
+    - freshness            # AI_score_channel_freshness 산출 (0-10, 라운드마다 갱신)
+    - orthogonality_drift  # 카탈로그 대비 max pairwise overlap (DriftGuard 갱신)
 
 # ==========================================
 # 예시 엔트리 5개 (각 전략별)
@@ -217,6 +223,34 @@ metric_guide:
     7: "검증된 2차 자료"
     4: "비검증 2차"
     0: "허위·왜곡 가능성"
+
+# ==========================================
+# 채널 노화 가이드 (v1.3 — 정본: SKILL.md AI_score_channel_freshness)
+# ==========================================
+#
+# 8축 metrics는 *발굴 시점* 정적 평가. decay_guide는 *시간에 따른 동적* 신선도.
+# 둘은 상보적: metrics=품질, freshness=노화. weak 판정은 둘 다 본다.
+
+decay_guide:
+  freshness:
+    desc: "미산출 지속 + validated_at 노화에 따른 지수 감쇠 신선도 (0-10)"
+    formula: |
+      rounds_since_yield = current_round - (last_yield_round or first_seen_round)
+      base = 10 × 0.5 ^ (rounds_since_yield / channel_decay.half_life_rounds)
+      freshness = clamp(base × (0.7 if validated_at 노화초과 else 1.0), 0, 10)
+    policy_ref: "SKILL.md SDX_POLICY.channel_decay (half_life_rounds / stale_validated_days / freshness_floor)"
+    rationale: "homogenization은 출력 동질화라는 *지연·시스템* 신호. freshness는 채널별 *선행* 신호."
+
+  orthogonality_drift:
+    desc: "현재 카탈로그 대비 이 채널의 max pairwise overlap (0-1)"
+    measurement: "max(AI_compute_pairwise_overlap(this, other) for other in catalog)"
+    weak_when: "> SDX_POLICY.selection.max_overlap_cut (0.5) — 발굴 후 상관이 누적된 신호"
+    updated_by: "DriftGuard(라운드별 표본) 및 ModeAudit(전수 N×N)"
+
+  catalog_size_note: |
+    카탈로그 80은 설계된 *직교 기저 차원*(고정)이지 비용 변수가 아니다.
+    노화 채널은 '축소'가 아니라 ModeRefresh의 *교체*(크기 보존)로 처리한다.
+    상향 확장만 ModeExpand로 허용. (cost≪가치: 비용절감용 축소 = non-goal)
 
 # ==========================================
 # 4-Axis 셀 좌표 시스템

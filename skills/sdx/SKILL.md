@@ -52,6 +52,19 @@ update_trigger:
   selected: "homogenization_detected"
   alternatives: ["(a) quarterly", "(b) semi-annual"]
   rationale: "출력 동질화가 곧 입력 갱신 필요 신호"
+
+channel_maintenance:                 # v1.3 — 외부 리뷰(채널 노화/pruning/동적 80) 공식 대응
+  catalog_size_dynamic:
+    decision: "80 고정 유지. 상향은 expand로만 허용, '비용절감용 하향 축소'는 non-goal."
+    rationale: |
+      80은 설계된 *직교 기저 차원*이지 비용 변수가 아니다. 지배 원칙 cost≪가치상
+      '비싸니 줄이자'는 non-goal. 유지보수 투자 대상은 80개의 *신선도·직교 품질*.
+  channel_decay_rate:
+    decision: "명시화 — SDX_POLICY.channel_decay.half_life_rounds (기본 8라운드 반감)"
+    rationale: "기존엔 homogenization(지연·시스템 신호)만으로 간접 포착 → per-channel 정량 *선행* 모델 추가."
+  correlation_pruning:
+    decision: "이미 존재(independence×2.0 / max_overlap_cut / ModeAudit 중복제거) + v1.3 DriftGuard 선행 가드 추가"
+  user_decision_date: "2026-05-18"
 ```
 
 ## ACCESS_POLICY
@@ -116,6 +129,25 @@ http:
 
 audit:
   redundancy_similarity_threshold: 0.7  # ModeAudit에서 중복 채널로 간주
+
+channel_decay:                       # v1.3 신규 — per-channel 노화/신선도 모델
+  half_life_rounds: 8                # 미산출(no realized yield) 지속 시 freshness 반감 라운드 수
+  stale_validated_days: 120         # validated_at 경과일 임계 초과 시 freshness ×0.7 (재검증 권고)
+  freshness_floor: 4.0              # freshness < floor → weak 후보 (0-10 스케일)
+  yield_window_rounds: 10           # realized-yield 집계 윈도우
+
+weak_channel:                        # v1.3 신규 — AI_identify_weak_channels 정본 판정 기준
+  total_score_floor: 6.0            # 가중 점수 하한
+  protect_required_coverage: true   # required_coverage(geo/format/temporal/scale) 깨는 채널은 weak여도 제거 금지
+  # composite: freshness<channel_decay.freshness_floor OR total_score<floor
+  #            OR drift>selection.max_overlap_cut OR url_alive=false
+
+drift_guard:                         # v1.3 신규 — 라운드별 경량 직교성 *선행* 신호
+  check_every_round: true           # AOX Stage 6 wrap-up이 매 라운드 호출 (저비용)
+  sample_pairs: 200                 # 전수 N×N(audit) 대신 표본 쌍 — cost≪가치: 선행 신호용 경량
+  pair_overlap_warn: 0.5            # 표본 쌍 overlap 경고선 (= selection.max_overlap_cut와 정합)
+  warn_pair_ratio_refresh: 0.10     # 경고 초과 쌍 비율 ≥10% → refresh 권고
+  warn_pair_ratio_audit: 0.20       #                        ≥20% → full audit 권고
 ```
 
 ## 4-Axis Diversity Matrix (요약 — 정본: `schemas/channel_entry.yaml#axis_system`)
@@ -172,6 +204,12 @@ total_score = (independence × 2.0 + Σ(other_7_axes)) / 9.0
 | `expand` | 사용자가 특정 셀 지정 | 4-Axis 매트릭스의 빈 셀 집중 발굴 |
 | `audit` | 분기/임의 시점 | 80×80 직교성 재계산, 중복 채널 제거 |
 
+> v1.3: 위 4개는 CLI 모드. 추가로 **내부 훅 `DriftGuard`** (라운드별 경량 직교성
+> 선행 신호 — AOX Stage 6 wrap-up이 호출, refresh/audit로 에스컬레이트)가 있다.
+> CLI 모드가 아니며 `argument-hint`에 노출되지 않는다. homogenization(지연·시스템
+> 신호)과 상보적인 per-pair *선행* 신호로, audit(분기)·refresh(동질화)만으로
+> 라운드 사이 잔존하던 상관 누적을 조기 차단한다.
+
 ---
 
 ## DESIGN: Gantree
@@ -226,8 +264,9 @@ SDX_Main // SDX 메인 진입점 (in-progress) @v:1.2
             # output: reports/expand_v{N}.md                        (per expand cycle)
 
     ModeRefresh // 동질화 감지 시 부분 갱신 (designing)
-        # entry: AI_detect_homogenization triggered
-        # process: AI_identify_weak_channels → AI_explore_5_strategies_focused
+        # entry: AI_detect_homogenization triggered  (or DriftGuard escalation)
+        # process: AI_identify_weak_channels (v1.3: 노화·yield·드리프트 종합, required_coverage 보호)
+        #          → AI_explore_5_strategies_focused
         #          → AI_validate_url_alive → AI_swap_into_catalog
         # convergence: diversity_improvement >= SDX_POLICY.selection.diversity_improvement_target
         # output_root: .sdx/catalog/                                (mutate shards in place)
@@ -255,6 +294,16 @@ SDX_Main // SDX 메인 진입점 (in-progress) @v:1.2
         # output: basis/compute_NxN.py                              (reproducible script)
         # output: reports/audit_v{N}.md                             (violations + recommendations)
         # output: basis/selection_log_v{N}.yaml                     (only if policy changes)
+
+    DriftGuard // 라운드별 경량 직교성 선행 신호 (designing) — ★ 내부 훅, CLI 모드 아님 @v:1.3
+        # entry: AOX Stage 6 wrap-up이 매 라운드 호출 (SDX_POLICY.drift_guard.check_every_round)
+        # process: AI_orthogonality_drift_guard (표본 sample_pairs쌍 overlap) → recommendation
+        # escalate: warn_pair_ratio ≥ warn_pair_ratio_refresh → ModeRefresh
+        #           warn_pair_ratio ≥ warn_pair_ratio_audit   → ModeAudit
+        # rationale: audit(분기)·refresh(동질화)만으로 라운드 사이 상관 누적이 잔존 → 선행 가드
+        # note: homogenization(지연·시스템 신호)과 상보 — drift는 per-pair *선행* 신호. cost≪가치: 전수 N×N 회피
+        # output_root: .sdx/catalog/
+        # output: reports/drift_guard_log.md                         (per-round append)
 ```
 
 ---
@@ -478,6 +527,80 @@ def AI_detect_homogenization(recent_outputs: list[IdeaFirstOutput]) -> TriggerDe
     }
 ```
 
+### 채널 노화·드리프트 (v1.3 신규 — 외부 리뷰 대응)
+
+```python
+def AI_score_channel_freshness(ch: ChannelEntry, current_round: int) -> float:
+    """채널 신선도 (0-10). 미산출 지속 + validated_at 노화에 따라 지수 감쇠.
+    homogenization(시스템·지연 신호)과 달리 per-channel *선행* 신호."""
+    # acceptance_criteria:
+    #   - 0.0 <= freshness <= 10.0
+    #   - rounds_since_yield 단조 증가 시 단조 감소 (반감 = channel_decay.half_life_rounds)
+    D = SDX_POLICY["channel_decay"]
+    anchor = ch.get("last_yield_round") or ch.get("first_seen_round") or current_round
+    rounds_since_yield = max(0, current_round - anchor)
+    base = 10.0 * (0.5 ** (rounds_since_yield / D["half_life_rounds"]))
+    stale = AI_days_since(ch["validated_at"]) > D["stale_validated_days"]
+    return round(min(10.0, max(0.0, base * (0.7 if stale else 1.0))), 2)
+
+
+def AI_identify_weak_channels(
+    catalog: Catalog, n: int, current_round: int, yield_log: YieldLog,
+) -> list[ChannelEntry]:
+    """교체 후보(weak) N개. 정본 기준 = SDX_POLICY.weak_channel.
+    노화(freshness) + 실현 yield + 카탈로그 직교성 드리프트 + url 사망 종합.
+    ★ required_coverage(geo/format/temporal/scale)를 깨는 채널은 weak여도 제거 금지."""
+    # acceptance_criteria:
+    #   - len(result) <= n
+    #   - protect_required_coverage 시 커버리지 보존 (제거해도 required_coverage 유지)
+    #   - 약함 점수 내림차순 (가장 약한 N개)
+    W = SDX_POLICY["weak_channel"]
+    D = SDX_POLICY["channel_decay"]
+    drift_warn = SDX_POLICY["selection"]["max_overlap_cut"]
+
+    scored = []
+    for ch in catalog:
+        fresh    = AI_score_channel_freshness(ch, current_round)
+        realized = AI_realized_yield(ch, yield_log, window=D["yield_window_rounds"])
+        drift    = AI_max_overlap_vs_catalog(ch, catalog)
+        is_weak = (
+            fresh < D["freshness_floor"]
+            or ch["total_score"] < W["total_score_floor"]
+            or drift > drift_warn
+            or ch["url_alive"] is False
+        )
+        if is_weak:
+            weakness = ((D["freshness_floor"] - fresh)
+                        + max(0.0, drift - drift_warn) * 10.0
+                        + (3.0 if realized == 0 else 0.0))
+            scored.append((weakness, ch))
+
+    ranked = [ch for _, ch in sorted(scored, key=lambda t: t[0], reverse=True)]
+    if W["protect_required_coverage"]:
+        ranked = AI_filter_coverage_safe(ranked, catalog)   # 제거 시 required_coverage 깨면 제외
+    return ranked[:n]
+
+
+def AI_orthogonality_drift_guard(catalog: Catalog) -> DriftDecision:
+    """라운드별 경량 직교성 *선행* 신호 — AOX Stage 6 wrap-up이 매 라운드 호출.
+    전수 N×N(ModeAudit) 대신 표본 쌍만 → 무거운 audit를 기다리지 않고
+    상관 누적을 조기 포착해 refresh/audit로 에스컬레이트 (cost≪가치)."""
+    # acceptance_criteria:
+    #   - 표본 쌍 수 == min(SDX_POLICY.drift_guard.sample_pairs, C(len(catalog), 2))
+    #   - recommendation ∈ {no_action, refresh, audit}
+    G = SDX_POLICY["drift_guard"]
+    pairs = AI_sample_channel_pairs(catalog, k=G["sample_pairs"])
+    warn = [p for p in pairs if AI_compute_pairwise_overlap(*p) > G["pair_overlap_warn"]]
+    ratio = len(warn) / max(1, len(pairs))
+    if ratio >= G["warn_pair_ratio_audit"]:
+        rec = "audit"
+    elif ratio >= G["warn_pair_ratio_refresh"]:
+        rec = "refresh"
+    else:
+        rec = "no_action"
+    return {"warn_pair_ratio": round(ratio, 3), "sampled": len(pairs), "recommendation": rec}
+```
+
 ### 모드 실행 함수 (v1.2 신규 — H2)
 
 ```python
@@ -503,7 +626,11 @@ def mode_refresh(catalog: Catalog, recent_outputs: list[IdeaFirstOutput]) -> Cat
     if not decision["triggered"]:
         return catalog
 
-    weak = AI_identify_weak_channels(catalog, n=10)
+    weak = AI_identify_weak_channels(
+        catalog, n=10,
+        current_round=AI_current_round(),
+        yield_log=AI_load_yield_log(),     # v1.3: 노화·실현 yield 반영
+    )
     target_cells = AI_extract_cells(weak)
 
     for _ in range(SDX_POLICY["selection"]["refresh_max_iterations"]):

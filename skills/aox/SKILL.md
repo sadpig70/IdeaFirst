@@ -102,6 +102,11 @@ AOX_POLICY:
       avg_embedding_sim: 0.65
       winner_embedding_similarity: 0.5     # ★ NEW v1.3 — 라운드별 winner 비교
     triggered_when: "≥2 of 4 thresholds breached"
+    drift_guard:                           # ★ v1.3 — SDX 직교성 선행 가드 연동
+      enabled: true                        # Stage 6에서 SDX AI_orthogonality_drift_guard 호출 (저비용)
+      thresholds_owned_by: "SDX_POLICY.drift_guard"   # 단일 출처 — AOX 임계 복제 금지(desync 방지)
+      on_refresh: "기존 homogenization_trigger.flag 재사용 → 다음 라운드 Stage 1 /sdx refresh"
+      on_audit:   ".aox/global/sdx_audit_recommended.flag 기록 — ModeAudit는 사용자 승인 게이트, 자동 audit 금지"
 ```
 
 ## SDX/TCX Catalog Contract (v1.1)
@@ -126,6 +131,14 @@ sdx_catalog_contract:
     - channels/conf.yaml
     - channels/niche.yaml
     - channels/nature.yaml
+
+sdx_drift_guard_contract:                 # ★ v1.3 — SDX 직교성 선행 가드 (read-only)
+  provider: "SDX"
+  function: "AI_orthogonality_drift_guard(catalog)"   # SDX 내부 훅, CLI 모드 아님
+  caller: "AOX Stage 6 wrap-up (매 라운드, SDX_POLICY.drift_guard.check_every_round)"
+  side_effect: "none — 카탈로그 비변경 (표본 쌍 overlap 읽기만)"
+  thresholds_owned_by: "SDX_POLICY.drift_guard"        # AOX는 임계 복제 금지 (단일 출처)
+  returns: "{warn_pair_ratio, sampled, recommendation∈{no_action,refresh,audit}}"
 
 tcx_invocation:
   command: "/tcx full --catalog=.sdx/catalog/index.yaml --output={run_dir}/2_tcx/"
@@ -540,7 +553,22 @@ def Stage_6_WrapUp(ctx: RunContext, evx_result: EVXResult) -> WrapUpResult:
         ctx.log(f"⚠ Homogenization detected after this run: {homogenization.metrics}")
         # 다음 라운드에 SDX refresh 트리거하도록 마킹
         write_flag(".aox/global/homogenization_trigger.flag", homogenization.metrics)
-    
+
+    # ★ v1.3 — SDX 직교성 *선행* 가드 (저비용, 매 라운드). homogenization과 상보:
+    #   homogenization = 출력 동질화(지연·시스템 신호) / drift = 채널 상관 누적(선행 신호)
+    #   계약: sdx_drift_guard_contract (read-only, 임계는 SDX_POLICY.drift_guard 단일 출처)
+    drift = {"recommendation": "no_action"}
+    if AOX_POLICY.homogenization.drift_guard.enabled:
+        drift = AI_sdx_drift_guard(catalog_index=".sdx/catalog/index.yaml")  # → SDX AI_orthogonality_drift_guard
+        if drift["recommendation"] == "refresh" and not homogenization.triggered:
+            ctx.log(f"⚠ Orthogonality drift (refresh): {drift}")
+            # 기존 메커니즘 재사용 — 다음 라운드 Stage 1이 동일 flag로 /sdx refresh
+            write_flag(".aox/global/homogenization_trigger.flag", {"source": "drift_guard", **drift})
+        elif drift["recommendation"] == "audit":
+            # ModeAudit는 사용자 승인 필수 → 자동 실행 금지, 권고만 surface
+            ctx.log(f"⚠ Orthogonality drift (audit recommended, user-gated): {drift}")
+            write_flag(".aox/global/sdx_audit_recommended.flag", drift)
+
     # 실행 요약 — 모든 산출물을 각 스킬의 latest 고정 경로로 가리킴
     summary = {
         "run_id": ctx.run_id,
@@ -558,6 +586,7 @@ def Stage_6_WrapUp(ctx: RunContext, evx_result: EVXResult) -> WrapUpResult:
         },
         "round_chain": AI_read_yaml(".evx/latest/manifest.yaml")["source_chain"],
         "homogenization": homogenization,
+        "drift_guard": drift,                  # ★ v1.3 — SDX 직교성 선행 가드 결과 (감사 로그)
     }
     write_md(ctx.run_dir + "summary.md", summary)
     ctx.status["stages"]["6_wrapup"] = "completed"
@@ -611,10 +640,11 @@ AOX_Main // 마스터 오케스트레이터 (status: 설계중)
             AI_retry_on_failure                // max 2회
             → evx_result (.evx/latest/final_idea.md)
 
-        Stage6_WrapUp // 마무리 + 동질화 감지 (status: 설계중) [@dep:Stage5_EVX]
-            AI_measure_homogenization
-            AI_set_next_run_trigger_if_needed
-            AI_generate_run_summary
+        Stage6_WrapUp // 마무리 + 동질화 감지 + 직교성 선행 가드 (status: 설계중) [@dep:Stage5_EVX]
+            AI_measure_homogenization          // 출력 동질화 (지연·시스템 신호)
+            AI_sdx_drift_guard                 // ★ v1.3 SDX 직교성 선행 가드 (read-only, sdx_drift_guard_contract)
+            AI_set_next_run_trigger_if_needed  // refresh→homogenization_trigger.flag 재사용 / audit→승인게이트 flag
+            AI_generate_run_summary            // homogenization + drift_guard 모두 기록
             → wrap_up_result
 
     ModePartial // 특정 단계부터 시작 (status: 설계중)
@@ -775,7 +805,8 @@ def AI_measure_homogenization(recent_runs: list[RunContext], current_run: RunCon
 ```
 .aox/
 ├── global/
-│   ├── homogenization_trigger.flag   # 다음 라운드 트리거 신호
+│   ├── homogenization_trigger.flag   # 다음 라운드 트리거 신호 (동질화 OR drift refresh 권고 공용)
+│   ├── sdx_audit_recommended.flag    # ★ v1.3 drift_guard audit 권고 (사용자 승인 게이트, 자동실행 X)
 │   └── recent_runs.json              # 최근 N개 run 목록 (동질화 측정용)
 │
 └── {run_id}/                          # 예: "a3f4-2026-05-11T05:00:00"
