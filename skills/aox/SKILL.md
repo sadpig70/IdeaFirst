@@ -107,6 +107,9 @@ AOX_POLICY:
       thresholds_owned_by: "SDX_POLICY.drift_guard"   # 단일 출처 — AOX 임계 복제 금지(desync 방지)
       on_refresh: "기존 homogenization_trigger.flag 재사용 → 다음 라운드 Stage 1 /sdx refresh"
       on_audit:   ".aox/global/sdx_audit_recommended.flag 기록 — ModeAudit는 사용자 승인 게이트, 자동 audit 금지"
+    yield_attribution:                     # ★ v1.3 — realized-yield 귀속 (decay 모델 입력)
+      enabled: true                        # Stage 6에서 provenance walk → SDX AI_record_channel_yield
+      scope_owned_by: "SDX_POLICY.yield_attribution"  # 단일 출처 — credit_scope/fallback는 SDX 소유
 ```
 
 ## SDX/TCX Catalog Contract (v1.1)
@@ -139,6 +142,16 @@ sdx_drift_guard_contract:                 # ★ v1.3 — SDX 직교성 선행 �
   side_effect: "none — 카탈로그 비변경 (표본 쌍 overlap 읽기만)"
   thresholds_owned_by: "SDX_POLICY.drift_guard"        # AOX는 임계 복제 금지 (단일 출처)
   returns: "{warn_pair_ratio, sampled, recommendation∈{no_action,refresh,audit}}"
+
+sdx_yield_attribution_contract:           # ★ v1.3 — realized-yield 귀속 (write는 SDX 전유)
+  provider: "SDX (AI_record_channel_yield)"
+  caller: "AOX Stage 6 wrap-up — 라운드 종료 시"
+  aox_role: "provenance READ only — EVX manifest→CIX idea.source_insight_id"
+            "→IDX insight.source_tcx_items→TCX item.source_channel_id→CH-NNNN"
+  sdx_role: "WRITE only — yield_log append + 기여 채널 last_yield_round/yield_count 갱신"
+  boundary: ".sdx/catalog 변경은 SDX 전유 (AOX는 channel_ids 리스트만 전달)"
+  scope_owned_by: "SDX_POLICY.yield_attribution"       # credit_scope/fallback 단일 출처
+  upstream: "TCX/IDX/CIX/EVX 스키마 변경 불요 — 추적 필드 이미 존재"
 
 tcx_invocation:
   command: "/tcx full --catalog=.sdx/catalog/index.yaml --output={run_dir}/2_tcx/"
@@ -569,6 +582,22 @@ def Stage_6_WrapUp(ctx: RunContext, evx_result: EVXResult) -> WrapUpResult:
             ctx.log(f"⚠ Orthogonality drift (audit recommended, user-gated): {drift}")
             write_flag(".aox/global/sdx_audit_recommended.flag", drift)
 
+    # ★ v1.3 — realized-yield 귀속 (SDX decay 모델 입력 채움). 계약: sdx_yield_attribution_contract
+    #   AOX = provenance READ만 / SDX = .sdx/catalog WRITE만 (경계 분리)
+    yield_attr = {"recorded": 0}
+    if AOX_POLICY.homogenization.yield_attribution.enabled:
+        # 기존 추적 필드만 walk — 상류 스키마 변경 없음 (정밀 실패 시 SDX_POLICY.fallback)
+        contributing = AI_trace_winner_channels(
+            evx_manifest=".evx/latest/manifest.yaml",        # source_chain
+            idea_pool=".cix/latest/idea_pool.yaml",          # idea.source_insight_id
+            idx_traced=".idx/latest/insight_layered_traced.yaml",  # insight.source_tcx_items
+            tcx_latest=".tcx/latest/",                        # item.source_channel_id
+            scope=SDX_POLICY.yield_attribution.credit_scope,  # 단일 출처 — AOX는 읽기만(복제 금지)
+        )
+        # .sdx/catalog 변경은 SDX 전유 — AOX는 channel_ids만 위임
+        yield_attr = AI_sdx_record_yield(round_id=ctx.run_id, channel_ids=contributing)
+        ctx.log(f"realized-yield recorded: {yield_attr}")
+
     # 실행 요약 — 모든 산출물을 각 스킬의 latest 고정 경로로 가리킴
     summary = {
         "run_id": ctx.run_id,
@@ -587,6 +616,7 @@ def Stage_6_WrapUp(ctx: RunContext, evx_result: EVXResult) -> WrapUpResult:
         "round_chain": AI_read_yaml(".evx/latest/manifest.yaml")["source_chain"],
         "homogenization": homogenization,
         "drift_guard": drift,                  # ★ v1.3 — SDX 직교성 선행 가드 결과 (감사 로그)
+        "yield_attribution": yield_attr,       # ★ v1.3 — realized-yield 귀속 결과 (감사 로그)
     }
     write_md(ctx.run_dir + "summary.md", summary)
     ctx.status["stages"]["6_wrapup"] = "completed"
@@ -643,8 +673,10 @@ AOX_Main // 마스터 오케스트레이터 (status: 설계중)
         Stage6_WrapUp // 마무리 + 동질화 감지 + 직교성 선행 가드 (status: 설계중) [@dep:Stage5_EVX]
             AI_measure_homogenization          // 출력 동질화 (지연·시스템 신호)
             AI_sdx_drift_guard                 // ★ v1.3 SDX 직교성 선행 가드 (read-only, sdx_drift_guard_contract)
+            AI_trace_winner_channels           // ★ v1.3 provenance walk EVX→CIX→IDX→TCX→CH (READ only)
+            AI_sdx_record_yield                // ★ v1.3 → SDX AI_record_channel_yield (WRITE는 SDX 전유)
             AI_set_next_run_trigger_if_needed  // refresh→homogenization_trigger.flag 재사용 / audit→승인게이트 flag
-            AI_generate_run_summary            // homogenization + drift_guard 모두 기록
+            AI_generate_run_summary            // homogenization + drift_guard + yield_attribution 기록
             → wrap_up_result
 
     ModePartial // 특정 단계부터 시작 (status: 설계중)

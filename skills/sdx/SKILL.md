@@ -148,6 +148,15 @@ drift_guard:                         # v1.3 신규 — 라운드별 경량 직�
   pair_overlap_warn: 0.5            # 표본 쌍 overlap 경고선 (= selection.max_overlap_cut와 정합)
   warn_pair_ratio_refresh: 0.10     # 경고 초과 쌍 비율 ≥10% → refresh 권고
   warn_pair_ratio_audit: 0.20       #                        ≥20% → full audit 권고
+
+yield_attribution:                   # v1.3 신규 — realized-yield 귀속·기록 (decay 모델 입력 채움)
+  yield_log_path: ".sdx/catalog/yield_log.jsonl"  # SDX 소유 append-only, 라운드당 1 레코드
+  credit_scope: "evx_topk"          # winner | evx_topk | cix_topk — 기여 채널 인정 범위
+                                    #   evx_topk = winner + 페르소나 top-3 finalists (sparse/diffuse 절충)
+  count_per_round_max_once: true    # 한 라운드에 같은 채널은 yield_count +1 (아이디어 수 무관)
+  fallback: "round_level_domain_channels"  # 정밀 trace 결손 시 winning idea 도메인의 TCX matched_channels
+  # 정밀 경로: EVX winner → CIX idea.source_insight_id → IDX insight.source_tcx_items
+  #            → TCX item.source_channel_id → SDX CH-NNNN  (전부 기존 필드, 상류 변경 불요)
 ```
 
 ## 4-Axis Diversity Matrix (요약 — 정본: `schemas/channel_entry.yaml#axis_system`)
@@ -304,6 +313,15 @@ SDX_Main // SDX 메인 진입점 (in-progress) @v:1.2
         # note: homogenization(지연·시스템 신호)과 상보 — drift는 per-pair *선행* 신호. cost≪가치: 전수 N×N 회피
         # output_root: .sdx/catalog/
         # output: reports/drift_guard_log.md                         (per-round append)
+
+    YieldLedger // realized-yield 귀속 기록 (designing) — ★ 내부 훅, CLI 모드 아님 @v:1.3
+        # entry: AOX Stage 6 wrap-up이 라운드 종료 시 호출 (sdx_yield_attribution_contract)
+        # process: AOX가 provenance walk(EVX→CIX→IDX→TCX→CH) → channel_ids → AI_record_channel_yield
+        # effect: yield_log append + 기여 채널 last_yield_round/yield_count 갱신 (decay 모델 입력 채움)
+        # boundary: .sdx/catalog 변경은 SDX 전유 — AOX는 channel_ids만 전달(읽기는 AOX, 쓰기는 SDX)
+        # note: last_yield_round/yield_count는 *provenance-walk 산출*이지 수기 입력 아님
+        # output_root: .sdx/catalog/
+        # output: yield_log.jsonl                                    (per-round append, SDX 소유)
 ```
 
 ---
@@ -599,6 +617,49 @@ def AI_orthogonality_drift_guard(catalog: Catalog) -> DriftDecision:
     else:
         rec = "no_action"
     return {"warn_pair_ratio": round(ratio, 3), "sampled": len(pairs), "recommendation": rec}
+
+
+def AI_load_yield_log() -> YieldLog:
+    """SDX 소유 yield_log 적재 (append-only, 라운드당 1 레코드).
+    레코드 = {round_id, ordinal, channel_ids:[CH-...], scope}."""
+    # acceptance_criteria:
+    #   - 파일 부재 시 빈 로그 반환 (최초 라운드)
+    #   - ordinal 단조 증가 (freshness의 정수 라운드 거리 기준)
+    path = SDX_POLICY["yield_attribution"]["yield_log_path"]
+    return AI_read_jsonl(path) if AI_path_exists(path) else []
+
+
+def AI_realized_yield(ch: ChannelEntry, yield_log: YieldLog, window: int) -> int:
+    """최근 window 라운드 중 이 채널이 기여(채택 아이디어 산출)한 라운드 수."""
+    # acceptance_criteria:
+    #   - 0 <= result <= window
+    recent = yield_log[-window:] if window else yield_log
+    return sum(1 for rec in recent if ch["id"] in rec["channel_ids"])
+
+
+def AI_record_channel_yield(round_id: str, channel_ids: list[str]) -> YieldRecord:
+    """라운드 종료 시 기여 채널을 yield_log에 append + 각 엔트리 노화 필드 갱신.
+    ★ .sdx/catalog 변경의 *유일한* 경로는 SDX (AOX는 channel_ids만 전달 — sdx_yield_attribution_contract).
+    AOX Stage 6가 provenance를 walk해 channel_ids를 산출하면 SDX가 적용한다."""
+    # acceptance_criteria:
+    #   - yield_log에 정확히 1 레코드 append (ordinal = 직전+1)
+    #   - 각 기여 채널: last_yield_round=ordinal, yield_count += 1
+    #     (count_per_round_max_once → 라운드당 채널별 최대 1회)
+    #   - 비기여 채널 / 그 외 스키마 필드 불변, required_coverage 무관(읽기 아님·교체 아님)
+    Y = SDX_POLICY["yield_attribution"]
+    log = AI_load_yield_log()
+    ordinal = (log[-1]["ordinal"] + 1) if log else 0
+    rec = {"round_id": round_id, "ordinal": ordinal,
+           "channel_ids": sorted(set(channel_ids)), "scope": Y["credit_scope"]}
+    AI_append_jsonl(Y["yield_log_path"], rec)
+    for cid in rec["channel_ids"]:
+        ch = AI_catalog_entry(cid)            # 카탈로그에 없으면 skip (교체로 사라진 채널)
+        if ch is None:
+            continue
+        ch["last_yield_round"] = ordinal      # freshness anchor 갱신
+        ch["yield_count"] = ch.get("yield_count", 0) + 1
+        AI_write_catalog_entry(ch)            # shard in-place, v1.3 필드만 갱신
+    return rec
 ```
 
 ### 모드 실행 함수 (v1.2 신규 — H2)

@@ -252,6 +252,19 @@ decay_guide:
     노화 채널은 '축소'가 아니라 ModeRefresh의 *교체*(크기 보존)로 처리한다.
     상향 확장만 ModeExpand로 허용. (cost≪가치: 비용절감용 축소 = non-goal)
 
+  yield_attribution:
+    desc: "last_yield_round / yield_count 를 채우는 출처 (v1.3 — 수기 아님)"
+    source: |
+      라운드 종료 시 SDX AI_record_channel_yield 가 기록. 기여 채널은
+      provenance walk 로 산출: EVX winner → CIX idea.source_insight_id
+      → IDX insight.source_tcx_items → TCX item.source_channel_id → CH-NNNN.
+      전부 *기존* 필드 — TCX/IDX/CIX/EVX 스키마 변경 불요.
+    yield_log: ".sdx/catalog/yield_log.jsonl (SDX 소유, append-only, 라운드당 1 레코드)"
+    policy_ref: "SKILL.md SDX_POLICY.yield_attribution (credit_scope / fallback)"
+    first_seen_round: |
+      신규 채널 등재(ModeBootstrap/Refresh/Expand emit) 시 반드시 설정 —
+      freshness anchor 폴백(아직 yield 없는 신선한 채널이 즉시 weak로 오인되지 않도록).
+
 # ==========================================
 # 4-Axis 셀 좌표 시스템
 # ==========================================
