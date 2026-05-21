@@ -1,5 +1,7 @@
 # Message-Layer Compliance Oracle (MCO)
 
+![MCO Infographic](assets/MCO_infographic.png)
+
 MCO is an AI-native exploratory transaction compliance routing oracle. It targets multi-jurisdictional compliance semantic incompatibilities on ISO 20022 message layers and stablecoin settlement channels.
 
 This project is concrete evidence generated as part of the **IdeaFirst AOX Standalone Loop** (Winner of Run `SA-AOX-20260521-002`).
