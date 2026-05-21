@@ -1,0 +1,19 @@
+{
+  "project": "MCO",
+  "pgf_mode": "design-plan-execute-verify",
+  "status": "mvp_completed",
+  "nodes": {
+    "G1_product_thesis": "completed",
+    "G2_message_schema": "completed",
+    "G3_compliance_rules": "completed",
+    "G4_prototype_oracle": "completed",
+    "G5_sample_verification": "completed",
+    "G6_verification_round": "completed",
+    "G7_rule_expansion": "completed"
+  },
+  "boundary": {
+    "production_certified": false,
+    "source": "SA-AOX standalone winner IDEA-CAP-20-004",
+    "notes": "Exploratory product concretization refined with review feedback, not production certified."
+  }
+}

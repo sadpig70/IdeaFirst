@@ -1,0 +1,11 @@
+{
+  "status": "APPROVED",
+  "reason": "All compliance checks passed",
+  "timestamp": "2026-05-21T02:12:02.836308Z",
+  "attestation_token": {
+    "oracle_id": "MCO-ORACLE-01",
+    "transaction_hash": "65f9ccebf0e2c24bf5b1c2bf12e250996b876968c7aa2b5ea1e4b607702d7d52",
+    "signature": "mco_sig_0x322a9ee59ee0f617029fe474fc684171",
+    "certificate_type": "ISO20022_COMPLIANCE_COMPATIBILITY_v1"
+  }
+}

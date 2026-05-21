@@ -1,0 +1,100 @@
+schema:
+  name: message_compliance
+  abbreviation: MCO
+  expansion: Message-Layer Compliance Oracle
+  version: "0.1"
+  format: json
+  purpose: Verify ISO 20022 or Stablecoin transactions against compliance rules.
+  row_granularity: One JSON payload equals one transactional evaluation.
+
+required_fields_iso20022:
+  - msg_id
+  - creation_date_time
+  - payment_type
+  - debtor
+  - creditor
+  - amount
+  - currency
+
+required_fields_stablecoin:
+  - tx_hash
+  - from_address
+  - to_address
+  - amount
+  - token_symbol
+  - chain_id
+
+fields:
+  msg_id:
+    type: string
+    description: Unique ID for ISO 20022 transactions.
+  tx_hash:
+    type: string
+    description: Unique cryptographic transaction hash for Stablecoins.
+  creation_date_time:
+    type: datetime
+    format: ISO-8601
+    description: ISO 20022 transaction initiation timestamp.
+  payment_type:
+    type: string
+    enum: [CREDIT_TRANSFER, DIRECT_DEBIT]
+    description: Transfer category.
+  debtor:
+    type: object
+    properties:
+      name: {type: string}
+      country: {type: string}
+      account_id: {type: string}
+    description: Sending entity data.
+  creditor:
+    type: object
+    properties:
+      name: {type: string}
+      country: {type: string}
+      account_id: {type: string}
+    description: Receiving entity data.
+  from_address:
+    type: string
+    description: Stablecoin sender public key/address.
+  to_address:
+    type: string
+    description: Stablecoin receiver public key/address.
+  amount:
+    type: number
+    minimum: 0.01
+    description: Total amount transfer value.
+  currency:
+    type: string
+    pattern: "^[A-Z]{3}$"
+    description: ISO 3-letter currency code (e.g. USD, EUR).
+  token_symbol:
+    type: string
+    description: ERC-20 / stablecoin token identifier (e.g. USDT, USDC).
+  chain_id:
+    type: integer
+    description: EVM or network chain identifier.
+  extensions:
+    type: object
+    description: Additional payment payload extensions, such as enhanced_kyc_verified.
+  metadata:
+    type: object
+    description: Additional stablecoin context metadata containing sender/receiver details.
+
+outputs:
+  evaluation:
+    - status # APPROVED or BLOCKED
+    - reason # Detailed reason for match or block
+    - timestamp # Evaluation UTC timestamp
+    - attestation_token # Cryptographic verification certificate if APPROVED
+
+validation_rules:
+  - Transaction amount must be positive.
+  - Transactions >= 10,000 USD equivalent require enhanced_kyc_verified parameter set to true.
+  - Debtor/creditor and sender/receiver names are screened against compliance_rules.yaml blocked_names.
+  - Country codes are screened against compliance_rules.yaml blocked_countries.
+
+boundary:
+  legal_clearance: false
+  production_compliance_certified: false
+  use_as: [exploratory_compliance_routing, high_risk_warning, sandbox_compliance_simulations]
+  do_not_use_as: [final_ofac_sanctions_clearance, regulatory_audit_proofs, real_money_custody_approvals]

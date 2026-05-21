@@ -1,0 +1,23 @@
+version: '1.0'
+sanctions_list:
+  blocked_names:
+    - "ALEXEY SMIRNOV"
+    - "JOHN SANCTIONED"
+    - "ZACK CORRUPT"
+  blocked_countries:
+    - "KP" # North Korea
+    - "IR" # Iran
+    - "SY" # Syria
+  high_risk_countries:
+    - "RU" # Russia
+    - "MM" # Myanmar
+compliance_rules:
+  - id: RULE-AML-01
+    name: Global Transaction Limit
+    description: Flag transactions exceeding 10,000 USD equivalent requiring manual check or enhanced attestation.
+    threshold_usd: 10000
+    action: VERIFY_LIMIT
+  - id: RULE-GEO-02
+    name: High Risk Jurisdiction Check
+    description: Restrict transfers involving known high-risk jurisdictions.
+    action: BLOCK

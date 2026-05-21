@@ -1,0 +1,21 @@
+{
+  "msg_id": "ISO-20022-TX-998877",
+  "creation_date_time": "2026-05-21T11:15:00Z",
+  "payment_type": "CREDIT_TRANSFER",
+  "debtor": {
+    "name": "KIM JEONGWOOK",
+    "country": "KR",
+    "account_id": "IBAN-KR-99-8877-6655"
+  },
+  "creditor": {
+    "name": "Alice In Wonderland",
+    "country": "US",
+    "account_id": "IBAN-US-11-2233-4455"
+  },
+  "amount": 15000.0,
+  "currency": "USD",
+  "extensions": {
+    "enhanced_kyc_verified": "true",
+    "purpose_of_payment": "Trade Invoice Settlement"
+  }
+}
